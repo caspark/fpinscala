@@ -17,20 +17,72 @@ trait Stream[+A] {
     case Empty => None
     case Cons(h, t) => if (f(h())) Some(h()) else t().find(f)
   }
-  def take(n: Int): Stream[A] = sys.error("todo")
 
-  def drop(n: Int): Stream[A] = sys.error("todo")
+  def toList: List[A] = foldRight(List[A]())(_ :: _)
 
-  def takeWhile(p: A => Boolean): Stream[A] = sys.error("todo")
+  def take(n: Int): Stream[A] =
+    if (n == 0) Empty
+    else this match {
+      case Cons(x, xs) => cons(x(), xs().take(n - 1))
+      case Empty => Empty
+    }
 
-  def forAll(p: A => Boolean): Boolean = sys.error("todo")
+  def drop(n: Int): Stream[A] =
+    if (n == 0) this
+    else this match {
+      case Cons(_, xs) => xs().drop(n - 1)
+      case Empty => Empty
+    }
 
-  def headOption: Option[A] = sys.error("todo")
+  def takeWhile(p: A => Boolean): Stream[A] = this match {
+      case Cons(x, xs) if p(x()) => cons(x(), xs().takeWhile(p))
+      case _ => Empty
+    }
 
-  // 5.7 map, filter, append, flatmap using foldRight. Part of the exercise is
-  // writing your own function signatures.
+  // 5.4
+  def forAll(p: A => Boolean): Boolean = this match {
+    case Cons(x, xs) => p(x()) && xs().forAll(p)
+    case _ => true
+  }
 
-  def startsWith[B](s: Stream[B]): Boolean = sys.error("todo")
+  // 5.5
+  def takeWhileViaFoldRight(p: A => Boolean): Stream[A] =
+    foldRight(empty[A])((a, b) => if (p(a)) cons(a, b) else b)
+
+  // 5.6
+  def headOption: Option[A] = foldRight(None: Option[A])((a, _) => Some(a))
+
+  // 5.7 map, filter, append, flatmap using foldRight.
+  def map[B](f: A => B): Stream[B] = foldRight(empty[B])((a, b) => cons(f(a), b))
+  def filter(f: A => Boolean): Stream[A] = foldRight(empty[A])((a, b) => if (f(a)) cons(a, b) else b)
+  def append[AA >: A](x: => Stream[AA]): Stream[AA] = foldRight(x)(cons(_, _))
+  def flatMap[B](f: A => Stream[B]): Stream[B] = foldRight(empty[B])((a, b) => f(a) append b)
+
+  // 5.13 Use unfold to implement map, take, takeWhile, zipWith (as in chapter 3), and zipAll
+  def mapViaUnfold[B](f: A => B): Stream[B] = unfold(this) {
+    case Empty => None
+    case Cons(h, t) => Some(f(h()), t())
+  }
+  def takeViaUnfold(n: Int): Stream[A] = unfold((this, n)) {
+    case (Empty, _) | (_, 0) => None
+    case (Cons(h, t), i) => Some((h(), (t(), i)))
+  }
+  def takeWhileViaUnfold(p: A => Boolean): Stream[A] = unfold(this) {
+    case Cons(h, t) if p(h()) => Some(h(), t())
+    case _ => None
+  }
+  def zipWith[B, C](s2: Stream[B])(f: (A, B) => C): Stream[C] = unfold((this, s2)) {
+    case (Cons(a, as), Cons(b, bs)) => Some(f(a(), b()), (as(), bs()))
+    case _ => None
+  }
+  def zipAll[B](s2: Stream[B]): Stream[(Option[A], Option[B])] = unfold((this, s2)) {
+    case (Cons(a, as), Cons(b, bs)) => Some((Some(a()), Some(b())), (as(), bs()))
+    case (Cons(a, as), Empty) => Some(((Some(a()), None), (as(), empty)))
+    case (Empty, Cons(b, bs)) => Some((None, Some(b())), (empty, bs()))
+    case _ => None
+  }
+
+  def startsWith[B](s: Stream[B]): Boolean = ???
 }
 case object Empty extends Stream[Nothing]
 case class Cons[+A](h: () => A, t: () => Stream[A]) extends Stream[A]
@@ -49,7 +101,26 @@ object Stream {
     else cons(as.head, apply(as.tail: _*))
 
   val ones: Stream[Int] = Stream.cons(1, ones)
-  def from(n: Int): Stream[Int] = sys.error("todo")
 
-  def unfold[A, S](z: S)(f: S => Option[(A, S)]): Stream[A] = sys.error("todo")
+  // 5.8 Generalize ones slightly to the function constant, which returns an infinite Stream of a given value.
+  def constant[A](a: A): Stream[A] = cons(a, constant(a))
+
+  // 5.9 a function that generates an infinite stream of integers, starting from n, then n + 1, n + 2, and so on.
+  def from(n: Int): Stream[Int] = cons(n, from(n + 1))
+
+  // 5.10 a function fibs that generates the infinite stream of Fibonacci numbers
+  def fibs: Stream[Int] = {
+    def go(n1: Int, n2: Int): Stream[Int] = cons(n1 + n2, go(n2, n1 + n2))
+    cons(0, cons(1, go(0, 1)))
+  }
+
+  // 5.11 a more general stream-building function called unfold
+  def unfold[A, S](z: S)(f: S => Option[(A, S)]): Stream[A] =
+    f(z).map{ case (a, s) => cons(a, unfold(s)(f)) }.getOrElse(empty)
+
+  // 5.12 fibs, from, constant, and ones in terms of unfold
+  val onesViaUnfold: Stream[Int] = unfold(())(_ => Some((1, ())))
+  def constantViaUnfold[A](z: A): Stream[A] = unfold(())(_ => Some((z, ())))
+  def fromViaUnfold(n: Int): Stream[Int] = unfold(n)(i => Some((i, i + 1)))
+  def fibsViaUnfold: Stream[Int] = Stream(0, 1).append(unfold((0, 1)){ case (n1, n2) => Some((n1 + n2, (n2, n1 + n2))) })
 }
