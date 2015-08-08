@@ -168,7 +168,9 @@ object State {
    * the output should be (14, 1).
    */
   // 6.11
+  // QUESTION: what's the nicer way to write this using foldRight and map/flatMap/get/set ?
   def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = {
+
     def operateMachine(input: Input)(machine: Machine): Machine = input match {
       // inserting a coin into a locked machine will cause it to unlock if there's any candy left
       case Coin if machine.locked && machine.candies > 0 => machine.copy(locked = false, coins = machine.coins + 1)
@@ -179,20 +181,12 @@ object State {
       case Coin if !machine.locked => machine.copy(coins = machine.coins + 1)
       case _ if machine.candies == 0 => machine // machine out of candy ignores all inputs
     }
+
     val initial = State[Machine, (Int, Int)](s => ((s.coins, s.candies), s))
-    println(s"Inputs are $inputs")
-    inputs.foldRight(initial)((input, s) => {
-      println(s"Being instruction: input is $input")
-      for {
-        m <- s.get
-        _ = println("Get done") // FIXME for some reason the get isn't done when the input is something like
-                                // simulateMachine(List(Coin, Turn)).run(Machine(locked=true, candies = 5, coins = 10))
-        updatedM = operateMachine(input)(m)
-        _ = println("operateMachine done")
-        _ <- s.set(updatedM)
-        _ = println(s"set done; input = $input, updatedM is $updatedM")
-      } yield (updatedM.coins, updatedM.candies)
-    }
-    )
+    inputs.foldRight(initial)((input, s) => State(in => {
+      val (_, machine) = s.run(in)
+      val updatedM = operateMachine(input)(machine)
+      ((updatedM.coins, updatedM.candies), updatedM)
+    }))
   }
 }
