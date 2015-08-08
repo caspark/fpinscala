@@ -132,12 +132,25 @@ case class State[S,+A](run: S => (A, S)) {
       val (a, s2) = run(s)
       f(a).run(s2)
     })
+
+  def get: State[S, S] = State(s => (s, s))
+  def set(s: S): State[S, Unit] = State(_ => ((), s))
 }
 
 sealed trait Input
 case object Coin extends Input
 case object Turn extends Input
 
+/**
+ * The machine has two types of input: you can insert a coin, or you can turn the knob to dispense candy. It can be in
+ * one of two states: locked or unlocked. It also tracks how many candies are left and how many coins it contains.
+ *
+ * The rules of the machine are as follows:
+ * Inserting a coin into a locked machine will cause it to unlock if there’s any candy left.
+ * Turning the knob on an unlocked machine will cause it to dispense candy and become locked.
+ * Turning the knob on a locked machine or inserting a coin into an unlocked machine does nothing.
+ * A machine that’s out of candy ignores all inputs.
+ */
 case class Machine(locked: Boolean, candies: Int, coins: Int)
 
 object State {
@@ -147,5 +160,39 @@ object State {
     fs.foldRight(unit[S, List[A]](List()))((randA, bs) => randA.map2(bs)((a, bs) => a :: bs))
 
   type Rand[A] = State[RNG, A]
-  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
+
+  /**
+   * simulateMachine should operate the machine based on the list of inputs and return the number of coins and candies
+   * left in the machine at the end.
+   * For example, if the input Machine has 10 coins and 5 candies, and a total of 4 candies are successfully bought,
+   * the output should be (14, 1).
+   */
+  // 6.11
+  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = {
+    def operateMachine(input: Input)(machine: Machine): Machine = input match {
+      // inserting a coin into a locked machine will cause it to unlock if there's any candy left
+      case Coin if machine.locked && machine.candies > 0 => machine.copy(locked = false, coins = machine.coins + 1)
+      // turning knob on an unlocked machine will cause it to dispense candy and become locked
+      case Turn if !machine.locked => machine.copy(locked = true, candies = machine.candies - 1)
+      case Turn if machine.locked => machine // turning knob on locked machine does nothing
+      // inserting a coin into an unlocked machine does nothing (but presumably still eats the coin)
+      case Coin if !machine.locked => machine.copy(coins = machine.coins + 1)
+      case _ if machine.candies == 0 => machine // machine out of candy ignores all inputs
+    }
+    val initial = State[Machine, (Int, Int)](s => ((s.coins, s.candies), s))
+    println(s"Inputs are $inputs")
+    inputs.foldRight(initial)((input, s) => {
+      println(s"Being instruction: input is $input")
+      for {
+        m <- s.get
+        _ = println("Get done") // FIXME for some reason the get isn't done when the input is something like
+                                // simulateMachine(List(Coin, Turn)).run(Machine(locked=true, candies = 5, coins = 10))
+        updatedM = operateMachine(input)(m)
+        _ = println("operateMachine done")
+        _ <- s.set(updatedM)
+        _ = println(s"set done; input = $input, updatedM is $updatedM")
+      } yield (updatedM.coins, updatedM.candies)
+    }
+    )
+  }
 }
