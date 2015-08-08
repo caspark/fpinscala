@@ -82,7 +82,28 @@ trait Stream[+A] {
     case _ => None
   }
 
-  def startsWith[B](s: Stream[B]): Boolean = ???
+  // 5.14
+  def startsWith[B](s: Stream[B]): Boolean = zipAll(s).foldRight(true)((ab, r) => ab match {
+    case (Some(a), Some(b)) => r && a == b
+    case (_, None) => r
+    case _ => false
+  })
+  def startsWithUsingHint[B](s: Stream[B]): Boolean = zipAll(s).takeWhile {
+    case (_, Some(_)) => true
+    case _ => false
+  }.forAll(ab => ab._1 == ab._2)
+
+  // 5.15 tails using unfold, which returns the Stream of suffixes of the input sequence, starting with the original Stream
+  def tails: Stream[Stream[A]] = unfold(this) {
+    case Empty => None
+    case Cons(h, t) => Some((Cons(h, t), t()))
+  }
+
+  // 5.16 Generalize tails to the function scanRight, which is like a foldRight that returns a stream of the intermediate results
+  def scanRight[B](z: B)(f: (A, B) => B): Stream[B] =
+    foldRight((Stream(z), z)) {
+      case (a, (sb, b)) => (cons(f(a, b), sb), f(a, b))
+    }._1
 }
 case object Empty extends Stream[Nothing]
 case class Cons[+A](h: () => A, t: () => Stream[A]) extends Stream[A]
