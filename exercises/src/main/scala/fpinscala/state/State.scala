@@ -183,7 +183,7 @@ object State {
     }
 
     val initial = State[Machine, (Int, Int)](s => ((s.coins, s.candies), s))
-    inputs.foldRight(initial)((input, s) => State(in => {
+    inputs.foldLeft(initial)((s, input) => State(in => {
       val (_, machine) = s.run(in)
       val updatedM = operateMachine(input)(machine)
       ((updatedM.coins, updatedM.candies), updatedM)
